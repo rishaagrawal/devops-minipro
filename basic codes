@@ -1,0 +1,279 @@
+Perfect 👍 I’ll give you **clear steps + simple Java code skeleton** that matches **exactly the features you chose**, and is **JUnit-testable**.
+I’ll keep it **clean, not over-engineered**.
+
+---
+
+# ✅ STEP-BY-STEP IMPLEMENTATION PLAN
+
+## 🔹 STEP 1: Project Structure (Very Important)
+
+```
+src/
+ ├── main/java/
+ │    ├── model/
+ │    │    ├── Severity.java
+ │    │    ├── Action.java
+ │    │    ├── ModerationResult.java
+ │    │    └── AuditLog.java
+ │    │
+ │    ├── service/
+ │    │    ├── TextMatcher.java
+ │    │    ├── SeverityEngine.java
+ │    │    ├── StrikeManager.java
+ │    │    ├── ContextRuleEngine.java
+ │    │    └── ModerationService.java
+ │
+ └── test/java/
+      ├── ModerationServiceTest.java
+      ├── TextMatcherTest.java
+      └── StrikeManagerTest.java
+```
+
+---
+
+# 👤 PERSON 1 — Word Severity Levels
+
+### `Severity.java`
+
+```java
+public enum Severity {
+    LOW, MEDIUM, HIGH
+}
+```
+
+### `Action.java`
+
+```java
+public enum Action {
+    ALLOW, FLAG, BLOCK
+}
+```
+
+### `SeverityEngine.java`
+
+```java
+public class SeverityEngine {
+
+    public Action decideAction(Severity severity) {
+        switch (severity) {
+            case HIGH:
+                return Action.BLOCK;
+            case MEDIUM:
+                return Action.FLAG;
+            case LOW:
+            default:
+                return Action.ALLOW;
+        }
+    }
+}
+```
+
+---
+
+# 👤 PERSON 2 — Case-Insensitive & Partial Matching
+
+### `TextMatcher.java`
+
+```java
+public class TextMatcher {
+
+    public boolean containsBadWord(String text, String badWord) {
+        String normalizedText = normalize(text);
+        String normalizedBadWord = normalize(badWord);
+        return normalizedText.contains(normalizedBadWord);
+    }
+
+    private String normalize(String input) {
+        return input.toLowerCase().replaceAll("[^a-z]", "");
+    }
+}
+```
+
+---
+
+# 👤 PERSON 3 — Strike & Context Rules
+
+### `StrikeManager.java`
+
+```java
+import java.util.HashMap;
+import java.util.Map;
+
+public class StrikeManager {
+
+    private Map<String, Integer> userStrikes = new HashMap<>();
+
+    public Action applyStrike(String userId, Action baseAction) {
+        int strikes = userStrikes.getOrDefault(userId, 0);
+
+        if (baseAction == Action.ALLOW) {
+            return Action.ALLOW;
+        }
+
+        strikes++;
+        userStrikes.put(userId, strikes);
+
+        if (strikes == 1) return Action.FLAG;
+        if (strikes == 2) return Action.BLOCK;
+        return Action.BLOCK; // permanent block simulated
+    }
+}
+```
+
+### `ContextRuleEngine.java`
+
+```java
+public class ContextRuleEngine {
+
+    public boolean isAllowedInContext(String context, Severity severity) {
+        if (context.equalsIgnoreCase("educational")) {
+            return severity != Severity.HIGH;
+        }
+        return false;
+    }
+}
+```
+
+---
+
+# 👤 PERSON 4 — Audit Logs
+
+### `AuditLog.java`
+
+```java
+import java.time.LocalDateTime;
+
+public class AuditLog {
+    public String userId;
+    public String word;
+    public Action action;
+    public LocalDateTime timestamp;
+
+    public AuditLog(String userId, String word, Action action) {
+        this.userId = userId;
+        this.word = word;
+        this.action = action;
+        this.timestamp = LocalDateTime.now();
+    }
+}
+```
+
+---
+
+# 🔹 MAIN COORDINATOR — Moderation Service
+
+### `ModerationResult.java`
+
+```java
+public class ModerationResult {
+    public Action action;
+    public String message;
+
+    public ModerationResult(Action action, String message) {
+        this.action = action;
+        this.message = message;
+    }
+}
+```
+
+### `ModerationService.java`
+
+```java
+import java.util.ArrayList;
+import java.util.List;
+
+public class ModerationService {
+
+    private SeverityEngine severityEngine = new SeverityEngine();
+    private TextMatcher textMatcher = new TextMatcher();
+    private StrikeManager strikeManager = new StrikeManager();
+    private ContextRuleEngine contextEngine = new ContextRuleEngine();
+
+    public List<AuditLog> logs = new ArrayList<>();
+
+    public ModerationResult moderate(
+            String userId,
+            String text,
+            String badWord,
+            Severity severity,
+            String context) {
+
+        if (!textMatcher.containsBadWord(text, badWord)) {
+            return new ModerationResult(Action.ALLOW, "Clean content");
+        }
+
+        if (contextEngine.isAllowedInContext(context, severity)) {
+            return new ModerationResult(Action.ALLOW, "Allowed due to context");
+        }
+
+        Action baseAction = severityEngine.decideAction(severity);
+        Action finalAction = strikeManager.applyStrike(userId, baseAction);
+
+        logs.add(new AuditLog(userId, badWord, finalAction));
+
+        return new ModerationResult(finalAction, "Violation detected");
+    }
+}
+```
+
+---
+
+# 🧪 JUNIT TEST EXAMPLES
+
+### `ModerationServiceTest.java`
+
+```java
+import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.Test;
+
+public class ModerationServiceTest {
+
+    @Test
+    void highSeverityShouldBlock() {
+        ModerationService service = new ModerationService();
+        ModerationResult result = service.moderate(
+                "u1", "This is badword", "badword",
+                Severity.HIGH, "general");
+
+        assertEquals(Action.BLOCK, result.action);
+    }
+
+    @Test
+    void educationalContextAllowsMedium() {
+        ModerationService service = new ModerationService();
+        ModerationResult result = service.moderate(
+                "u2", "badword example", "badword",
+                Severity.MEDIUM, "educational");
+
+        assertEquals(Action.ALLOW, result.action);
+    }
+
+    @Test
+    void strikeEscalationWorks() {
+        ModerationService service = new ModerationService();
+
+        service.moderate("u3", "badword", "badword", Severity.MEDIUM, "general");
+        ModerationResult result = service.moderate(
+                "u3", "badword again", "badword",
+                Severity.MEDIUM, "general");
+
+        assertEquals(Action.BLOCK, result.action);
+    }
+}
+```
+
+---
+
+# ⭐ HOW THIS LOOKS IN VIVA (ONE LINE)
+
+> *The system normalizes text, detects violations, applies severity rules, escalates actions using strike counts, respects context overrides, and logs every moderation decision—all validated using JUnit.*
+
+---
+
+If you want next, I can:
+
+* simplify this further
+* add **branch-wise Git commits**
+* or create a **diagram you can explain easily**
+
+Just tell me 👍
